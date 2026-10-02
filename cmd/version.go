@@ -19,9 +19,11 @@ import (
 	clabutils "github.com/srl-labs/containerlab/utils"
 )
 
+const defaultVersion = "0.0.0"
+
 // Version variables set at build time (e.g., with -ldflags).
 var (
-	Version = "0.0.0"
+	Version = defaultVersion
 	commit  = "none"
 	date    = "unknown"
 )

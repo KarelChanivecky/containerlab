@@ -29,9 +29,15 @@ func initVersionManager(
 	ctx context.Context,
 ) {
 	versionManagerInstanceOnce.Do(func() {
+		currentVersion := mustParseVersion(Version)
+		if currentVersion == nil {
+			log.Debugf("invalid current version %q; using default version %q for comparison", Version, defaultVersion)
+			currentVersion = mustParseVersion(defaultVersion)
+		}
+
 		m := &manager{
 			verLock:        sync.Mutex{},
-			currentVersion: mustParseVersion(Version),
+			currentVersion: currentVersion,
 		}
 
 		versionCheckStatus := os.Getenv("CLAB_VERSION_CHECK")

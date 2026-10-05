@@ -18,8 +18,10 @@ import (
 	clabcert "github.com/srl-labs/containerlab/cert"
 	clabconstants "github.com/srl-labs/containerlab/constants"
 	clabexec "github.com/srl-labs/containerlab/exec"
+	clablabruntime "github.com/srl-labs/containerlab/labruntime"
 	clablinks "github.com/srl-labs/containerlab/links"
 	clabnodes "github.com/srl-labs/containerlab/nodes"
+	clabnodestailscale "github.com/srl-labs/containerlab/nodes/tailscale"
 	clabruntime "github.com/srl-labs/containerlab/runtime"
 	clabutils "github.com/srl-labs/containerlab/utils"
 	"golang.org/x/sync/errgroup"
@@ -31,6 +33,8 @@ type DeployResult struct {
 	// Apply summarizes the reconciliation of an already deployed lab or the dry-run plan;
 	// it is nil when Deploy performed a fresh full deployment.
 	Apply *ApplyResult
+	// RuntimePlan is the remote resource plan produced by a controller-driven runtime dry-run.
+	RuntimePlan *clablabruntime.DeployPlan
 }
 
 // Deploy converges the lab to the requested topology. A lab without runtime state is
@@ -61,6 +65,26 @@ func (c *CLab) Deploy(
 		}
 
 		return &DeployResult{Containers: containers}, nil
+	}
+
+	if c.LabRuntime != nil && options.dryRun {
+		planner, ok := c.LabRuntime.(clablabruntime.TopologyPlanner)
+		if !ok {
+			return nil, fmt.Errorf("lab runtime %q does not support dry-run", c.globalRuntimeName)
+		}
+
+		req, err := c.labRuntimeDeployRequest()
+		if err != nil {
+			return nil, err
+		}
+		applyLabRuntimeDeployOptions(&req, options)
+
+		plan, err := planner.Plan(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+
+		return &DeployResult{RuntimePlan: plan}, nil
 	}
 
 	currentNodes, err := c.runtimeNodeGroups(ctx)
@@ -157,6 +181,10 @@ func (c *CLab) deploy( //nolint: funlen
 	ctx context.Context,
 	options *DeployOptions,
 ) ([]clabruntime.GenericContainer, error) {
+	if c.LabRuntime != nil {
+		return c.deployWithLabRuntime(ctx, options)
+	}
+
 	var err error
 
 	err = c.ResolveLinks()
@@ -203,6 +231,9 @@ func (c *CLab) deploy( //nolint: funlen
 	}
 
 	if err := waitForNodeDeploy(ctx, nodesWg, nodeFailCh); err != nil {
+		return nil, err
+	}
+	if err := c.syncTailscaleProxy(ctx); err != nil {
 		return nil, err
 	}
 	if err := c.SyncMgmtHostRoutes(ctx); err != nil {
@@ -697,6 +728,9 @@ func (c *CLab) waitForNodeDeployTarget(
 		return err
 	}
 	target := networkModeContainerTarget(c.Nodes[name].Config().NetworkMode)
+	if target == "" {
+		target = c.Nodes[name].Config().Labels[clabnodestailscale.ParentLabel]
+	}
 	if completion, selected := completed[target]; selected {
 		select {
 		case <-completion.done:

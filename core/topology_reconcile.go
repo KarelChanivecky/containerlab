@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	clabconstants "github.com/srl-labs/containerlab/constants"
 	clablinks "github.com/srl-labs/containerlab/links"
 	clabnodes "github.com/srl-labs/containerlab/nodes"
+	clabnodestailscale "github.com/srl-labs/containerlab/nodes/tailscale"
 	clabruntime "github.com/srl-labs/containerlab/runtime"
 	clabtypes "github.com/srl-labs/containerlab/types"
 	clabutils "github.com/srl-labs/containerlab/utils"
@@ -103,6 +105,18 @@ func (p *applyPlan) isRootNamespaceNode(nodeName string) bool {
 
 func (p *applyPlan) isNonContainerNode(nodeName string) bool {
 	return p.isExternallyManaged(nodeName) || p.isRootNamespaceNode(nodeName)
+}
+
+// isNewNonContainerNode reports whether a non-container node (bridge, host,
+// ext-container) is absent from the previously deployed topology. Such nodes
+// exist outside the lab, so they are always listed as current nodes, even
+// when the topology has just added them.
+func (p *applyPlan) isNewNonContainerNode(nodeName string) bool {
+	if !p.isNonContainerNode(nodeName) || p.state == nil || p.state.Topology == nil {
+		return false
+	}
+	_, exists := p.state.Topology.Nodes[nodeName]
+	return !exists
 }
 
 // networkModeContainerTarget returns the referenced node name for a
@@ -210,6 +224,11 @@ func (c *CLab) planApply(
 			}
 
 			plan.addedNodeSet[nodeName] = struct{}{}
+			continue
+		}
+
+		if plan.isNewNonContainerNode(nodeName) {
+			plan.addedNodeSet[nodeName] = struct{}{}
 		}
 	}
 
@@ -270,6 +289,7 @@ func (c *CLab) planApply(
 	// Link reconciliation can request additional recreations. Propagate namespace
 	// dependencies only after those decisions, then park every affected live node.
 	c.planNetworkModeCascade(plan)
+	c.planTailscaleSidecarRecreates(plan)
 	c.planParkedNodes(ctx, plan)
 	c.planRecreatedNodeLinks(plan)
 	for nodeName := range plan.recreatedNodeSet {
@@ -706,6 +726,12 @@ func (c *CLab) resolveNodeConfigFromTopology(
 ) *clabtypes.NodeConfig {
 	if topo == nil {
 		return nil
+	}
+	if topo.GetNodeKind(nodeName) == clabnodestailscale.KindName &&
+		topo.GetNodeLabels(nodeName)[clabconstants.InternalNode] == "true" {
+		topo = &clabtypes.Topology{Nodes: map[string]*clabtypes.NodeDefinition{
+			nodeName: topo.Nodes[nodeName],
+		}}
 	}
 
 	binds, _ := topo.GetNodeBinds(nodeName)

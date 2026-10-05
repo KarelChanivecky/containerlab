@@ -34,6 +34,8 @@ Deploy helper container - SCP
     Run    echo '{"download": "startup config sftp"}' | sudo docker exec -i ${scpservername} tee /config/sftp-startup.json -
     ${rc}    ${scp_server_ip} =    Run And Return Rc And Output
     ...    sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${scpservername}
+    Should Be Equal As Integers    ${rc}    0    Failed to inspect SCP helper container: ${scp_server_ip}
+    Should Not Be Empty    ${scp_server_ip}
     Log    ${scp_server_ip}
     Set Suite Variable    ${scp_server_ip}    ${scp_server_ip}
     Set Environment Variable     CLAB_SSH_KEY    ${idrsa}
@@ -47,6 +49,8 @@ Deploy helper container - SSH password
     Run    echo '{"download": "startup config sftp password"}' | sudo docker exec -i ${sshpwservername} tee /config/sftp-password-startup.json -
     ${rc}    ${ssh_pw_server_ip} =    Run And Return Rc And Output
     ...    sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${sshpwservername}
+    Should Be Equal As Integers    ${rc}    0    Failed to inspect SSH password helper container: ${ssh_pw_server_ip}
+    Should Not Be Empty    ${ssh_pw_server_ip}
     Log    ${ssh_pw_server_ip}
     Set Suite Variable    ${ssh_pw_server_ip}    ${ssh_pw_server_ip}
     Set Environment Variable     SSH_PW_SERVER_IP    ${ssh_pw_server_ip}
@@ -56,6 +60,8 @@ Deploy helper container - FTP
     Run    docker run -d --name ${ftpservername} lhauspie/vsftpd-alpine
     ${rc}    ${ftp_server_ip} =    Run And Return Rc And Output
     ...    sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${ftpservername}
+    Should Be Equal As Integers    ${rc}    0    Failed to inspect FTP helper container: ${ftp_server_ip}
+    Should Not Be Empty    ${ftp_server_ip}
     Log    ${ftp_server_ip}
     Set Suite Variable    ${ftp_server_ip}    ${ftp_server_ip}
     Set Environment Variable     FTP_SERVER_IP    ${ftp_server_ip}
@@ -69,6 +75,8 @@ Deploy helper container - HTTP
     Run    echo '{"download": "startup config http"}' | sudo docker exec -i ${httpservername} tee /usr/local/apache2/htdocs/startup.json -
     ${rc}    ${http_server_ip} =    Run And Return Rc And Output
     ...    sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${httpservername}
+    Should Be Equal As Integers    ${rc}    0    Failed to inspect HTTP helper container: ${http_server_ip}
+    Should Not Be Empty    ${http_server_ip}
     Log    ${http_server_ip}
     Set Suite Variable    ${http_server_ip}    ${http_server_ip}
     Set Environment Variable     HTTP_SERVER_IP    ${http_server_ip}
@@ -84,6 +92,8 @@ Deploy helper container - HTTPS
     Run    sudo docker exec ${httpsservername} httpd -k restart
     ${rc}    ${https_server_ip} =    Run And Return Rc And Output
     ...    sudo docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${httpsservername}
+    Should Be Equal As Integers    ${rc}    0    Failed to inspect HTTPS helper container: ${https_server_ip}
+    Should Not Be Empty    ${https_server_ip}
     Log    ${https_server_ip}
     Set Suite Variable    ${https_server_ip}    ${https_server_ip}
     Set Environment Variable     HTTPS_SERVER_IP    ${https_server_ip}
@@ -167,8 +177,8 @@ Teardown
     Run    sudo -E ${CLAB_BIN} --runtime ${runtime} destroy -t ${CURDIR}/rendered.clab.yml --cleanup
     Run    rm -f ${CURDIR}/id_rsa*
     Run    sudo docker rm -f ${scpservername} ${sshpwservername} ${ftpservername} ${httpservername} ${httpsservername}
-    Run    ssh-keygen -f "~/.ssh/known_hosts" -R ${scp_server_ip}
-    Run    ssh-keygen -f "~/.ssh/known_hosts" -R ${ssh_pw_server_ip}
+    Run Keyword If    '${scp_server_ip}' != ''    Run    ssh-keygen -R ${scp_server_ip}
+    Run Keyword If    '${ssh_pw_server_ip}' != ''    Run    ssh-keygen -R ${ssh_pw_server_ip}
     Run    rm -f ${CURDIR}/rendered.clab.yml
     Run    sudo rm -rf ${CURDIR}/clab-${lab-name}
     Run    sudo rm -rf /tmp/.clab/${lab-name}-*
